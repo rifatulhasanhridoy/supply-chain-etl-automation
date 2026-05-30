@@ -3,7 +3,7 @@
 An end-to-end asynchronous data engineering pipeline built in **n8n** that automates the ingestion, routing, and processing of multi-structured supply chain logistics reports. The system automatically handles parallel data streams, updates a **Microsoft SQL Server** relational database, performs analytical deep-dives, and feeds structural insights to an LLM via **OpenRouter** to distribute responsive HTML executive dashboards.
 
 ## 📸 Workflow Layout
-![n8n Workflow Canvas](canvas.jpg)
+![n8n Workflow Canvas](canvas.png)
 
 ## 🚀 Workflow Architecture Overview
 
@@ -17,7 +17,7 @@ The pipeline executes the following stages seamlessly:
 ---
 
 ## 📨 Output Executive Dashboard
-![Generated Corporate Email](dashboard.jpg)
+![Generated Corporate Email](dashboard.png)
 
 ---
 
