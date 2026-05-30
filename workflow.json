@@ -1,0 +1,457 @@
+{
+  "name": "Gmail to SQL Server and AI Summary Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ],
+          "q": "subject:Daily Sales"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        576,
+        -128
+      ],
+      "id": "13744cb5-3371-43fa-b2b0-871209ec32b8",
+      "name": "Gmail Trigger1",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "u7CqqrksU6wn1Fs6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "attachment_1",
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        992,
+        112
+      ],
+      "id": "4084e361-1ed2-475c-8e6e-3ed02e01167d",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO fact_order_line (\n    order_id, \n    order_placement_date, \n    customer_id, \n    product_id, \n    order_qty, \n    agreed_delivery_date, \n    actual_delivery_date, \n    delivery_qty, \n    in_full, \n    on_time, \n    on_time_in_full\n) \nVALUES (\n    '{{ $json.order_id }}', \n    '{{ $json.order_placement_date.split(\"-\").reverse().join(\"-\") }}', \n    '{{ $json.customer_id }}', \n    '{{ $json.product_id }}', \n    {{ parseInt($json.order_qty) }}, \n    '{{ $json.agreed_delivery_date.split(\"-\").reverse().join(\"-\") }}', \n    '{{ $json.actual_delivery_date.split(\"-\").reverse().join(\"-\") }}', \n    {{ parseInt($json.delivery_qty) }}, \n    {{ parseInt($json['In Full']) }}, \n    {{ parseInt($json['On Time']) }}, \n    {{ parseInt($json['On Time In Full']) }}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        80
+      ],
+      "id": "2377fc0c-df65-4a1c-9368-5e759dd1fbe2",
+      "name": "Microsoft SQL",
+      "credentials": {
+        "microsoftSql": {
+          "id": "LIa5mP6ddzB5hGuN",
+          "name": "Microsoft SQL account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    COUNT(*) as total_orders,\n    SUM(order_qty) as total_units_ordered,\n    SUM(delivery_qty) as total_units_delivered,\n    SUM(order_qty - delivery_qty) as total_shorted_units,\n    AVG(CAST(on_time as FLOAT)) * 100 as on_time_rate,\n    AVG(CAST(in_full as FLOAT)) * 100 as in_full_rate,\n    AVG(CAST(on_time_in_full as FLOAT)) * 100 as otif_rate,\n    AVG(CAST(DATEDIFF(day, agreed_delivery_date, actual_delivery_date) as FLOAT)) as avg_days_delayed\nFROM fact_order_line",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1472,
+        80
+      ],
+      "id": "827be52e-9cf6-4eec-8c9e-e19eed9f6e1d",
+      "name": "Microsoft SQL1",
+      "credentials": {
+        "microsoftSql": {
+          "id": "LIa5mP6ddzB5hGuN",
+          "name": "Microsoft SQL account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "meta-llama/llama-4-maverick",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        384
+      ],
+      "id": "164d4078-4ac4-4735-96f6-4b48b4630eae",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "IcDsSmwC7ZyHRDkZ",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert supply chain data analyst. Review these two distinct diagnostic datasets compiled from our operation tables to write a highly accurate corporate performance brief.\n\n### 1. MACRO SUPPLY CHAIN METRICS & TIMELINES\nThis dataset contains our top-line high-level performance rates, historical milestone timelines, and worst-performing tracking dates:\n{{ JSON.stringify($('Microsoft SQL3').item.json) }}\n\n### 2. GRANULAR ROOT-CAUSE BOTTLENECKS\nThis dataset contains specific product-level and customer-level item shortfalls, operational volume gaps, and explicit delivery delay tracking (in days):\n{{ JSON.stringify($('Microsoft SQL1').all().map(i => i.json)) }}\n\n### DIRECTIVES FOR ANALYSIS:\n- Parse the Macro Metrics to extract the overall Total Orders, On-Time Rate, In-Full Rate, and OTIF Performance percentage.\n- Cross-reference the Granular Root Causes to explicitly pinpoint which Customer IDs or Product IDs are acting as the primary logistical bottlenecks dragging down our metrics.\n- Call out the absolute volume gap (Shorted Units) and the operational severity (Average Days Delayed).\n\n### OUTPUT FORMAT:\nFormat the entire executive report as a premium, responsive corporate email dashboard layout using raw HTML and inline CSS. Use a high-end modern aesthetic, specifically a sharp dark theme (#1a1d23 background) with high-contrast metric summary blocks (e.g., neon green for strong metrics, amber/red for problem metrics). \n\nOutput only the raw HTML code. Do not wrap the code blocks in markdown fences like ```html. Start directly with <div style=\"...\"> or <html>.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2064,
+        96
+      ],
+      "id": "88dbe0d4-147e-4133-9aa4-118454377e4d",
+      "name": "Basic LLM Chain",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Gmail Trigger1').item.json.from.value[0].address }}",
+        "subject": "=Executive Supply Chain Report – {{ $now.format('DD MMM YYYY') }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2432,
+        96
+      ],
+      "id": "e2268ed1-7fdd-4e4e-b594-ec2a4c6f597e",
+      "name": "Send a message",
+      "webhookId": "d05a5d8f-61c9-4bcc-a4a1-61de7035642f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "u7CqqrksU6wn1Fs6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        336
+      ],
+      "id": "44a9bade-ab15-48f4-b553-a14c6cf2215f",
+      "name": "Extract from File1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE fact_aggregate_usa;\nINSERT INTO fact_aggregate_usa (\n    order_id, \n    customer_id, \n    order_placement_date, \n    on_time, \n    in_full, \n    otif    \n) VALUES (\n    '{{ $json.order_id }}',\n    {{ $json.customer_id }},\n    CONVERT(DATE, '{{ $json.order_placement_date }}', 105), -- Handles DD-MM-YYYY strings safely\n    {{ $json.on_time }},\n    {{ $json.in_full }},\n    {{ $json.otif }}\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        336
+      ],
+      "id": "ef97ca44-8f81-4bbf-a7a6-6540d3e3909b",
+      "name": "Microsoft SQL2",
+      "credentials": {
+        "microsoftSql": {
+          "id": "LIa5mP6ddzB5hGuN",
+          "name": "Microsoft SQL account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT TOP 5\n    customer_id,\n    COUNT(*) as total_orders,\n    AVG(CAST(on_time as FLOAT)) * 100 as on_time_rate,\n    AVG(CAST(in_full as FLOAT)) * 100 as in_full_rate,\n    AVG(CAST(otif as FLOAT)) * 100 as otif_rate\nFROM fact_aggregate_usa\nGROUP BY customer_id\nORDER BY on_time_rate ASC",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1328,
+        336
+      ],
+      "id": "5ee826f3-d02b-4a20-a5e8-35ba7aeb366b",
+      "name": "Microsoft SQL3",
+      "credentials": {
+        "microsoftSql": {
+          "id": "LIa5mP6ddzB5hGuN",
+          "name": "Microsoft SQL account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1792,
+        96
+      ],
+      "id": "ad1d08fd-8c33-43e5-8942-6532f950b24c",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "=$binary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        832,
+        -128
+      ],
+      "id": "7be668d2-b969-4d22-903f-75bf8def178d",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $binary[Object.keys($binary)[0]].fileName }}",
+                    "rightValue": "=aggregate",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "5b0e2ac0-9622-45ed-bee5-669c0712b035"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Aggregate"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9ea50947-1855-4758-97d0-9949b41b2008",
+                    "leftValue": "={{ $binary[Object.keys($binary)[0]].fileName }}",
+                    "rightValue": "order_line",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Order Line"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        160
+      ],
+      "id": "19588ffe-87b3-41ef-a54a-845ad3ef9968",
+      "name": "Switch"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL2": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0f01fbe7-af15-4250-8655-9d95ee12164b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "13f60a86314bed3c5f9a96d9dee3c445e86d250399231bea130dd1057e053377"
+  },
+  "id": "RbmYlg0jrkywn2sv",
+  "tags": []
+}
